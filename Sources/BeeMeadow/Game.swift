@@ -16,10 +16,13 @@ final class Game {
         case valley
         case stall
         case picker(Int)
+        case helpers
     }
 
+    private enum Item: Equatable { case hive(Int), helper(Int) }
+
     private struct Drag {
-        let hive: Int
+        let item: Item
         let start: (x: Double, y: Double)
         let offset: (x: Double, y: Double)
         var moved = false
@@ -41,7 +44,7 @@ final class Game {
     private let stall = StallRenderer()
     private var time = 0.0
     var mouse: (x: Double, y: Double)?
-    private enum Placing: Equatable { case emptyBox, hive(Int) }
+    private enum Placing: Equatable { case emptyBox, hive(Int), helper(Int) }
     private var placing: Placing?
     private var drag: Drag?
     private var note: (lines: [String], age: Double)?
@@ -52,19 +55,21 @@ final class Game {
     private var canSleep: Bool { sleep == nil && Clock.canSleep(Clock.minute(at: Date())) }
     private static let maxShedRows = 5
 
-    enum ShedAction { case emptyBox, hive(Int), stall, close }
+    enum ShedAction { case emptyBox, hive(Int), helper(Int), stall, close }
 
     func shedLayout() -> (panel: PixelRect, rows: [(rect: PixelRect, label: String, enabled: Bool, action: ShedAction)]) {
-        let room = world.hasRoom(in: currentGarden)
-        var items: [(String, ShedAction)] = []
-        if world.spareBoxes > 0 { items.append((world.spareBoxes == 1 ? "Hive box" : "Hive box x\(world.spareBoxes)", .emptyBox)) }
-        for hive in world.packedHives.prefix(Game.maxShedRows - items.count) {
-            items.append(("\(hive.name) · \(world.beeCount(hive: hive.id)) bees", .hive(hive.id)))
+        let room = world.hasRoom(in: currentGarden), helperRoom = world.helper(in: currentGarden) == nil
+        var items: [(String, Bool, ShedAction)] = []
+        for helper in world.storedHelpers { items.append((helper.kind.title, helperRoom, .helper(helper.id))) }
+        if world.spareBoxes > 0 { items.append((world.spareBoxes == 1 ? "Hive box" : "Hive box x\(world.spareBoxes)", room, .emptyBox)) }
+        for hive in world.packedHives {
+            items.append(("\(hive.name) · \(world.beeCount(hive: hive.id)) bees", room, .hive(hive.id)))
         }
+        items = Array(items.prefix(Game.maxShedRows))
         let h = 26 + max(1, items.count) * 16 + 32
         let panel: PixelRect = (44, max(22, (Layout.height - h) / 2), 152, h)
         var rows: [(PixelRect, String, Bool, ShedAction)] = items.enumerated().map { i, item in
-            ((panel.x + 12, panel.y + 22 + i * 16, panel.w - 24, 12), item.0, room, item.1)
+            ((panel.x + 12, panel.y + 22 + i * 16, panel.w - 24, 12), item.0, item.1, item.2)
         }
         let bottom = panel.y + panel.h - 20
         rows.append(((panel.x + 12, bottom, 60, 12), "To stall", true, .stall))
@@ -94,6 +99,7 @@ final class Game {
                 switch row.action {
                 case .emptyBox: placing = .emptyBox
                 case .hive(let id): placing = .hive(id)
+                case .helper(let id): placing = .helper(id)
                 case .stall: stallReturnsToGarden = true; go(to: .stall)
                 case .close: break
                 }
@@ -104,8 +110,12 @@ final class Game {
             if Widgets.contains(Widgets.pantryRect, p) { go(to: .pantry); return true }
             if Widgets.contains(Widgets.shedRect, p) { shedOpen = true; return true }
             if canSleep && Widgets.contains(Widgets.bedRect, p) { sleep = (0, false); return true }
+            if let helper = helperAt(p) {
+                drag = Drag(item: .helper(helper.id), start: p, offset: (p.x - helper.x, p.y - helper.y), at: (Int(helper.x), Int(helper.y)))
+                return true
+            }
             if let hive = hiveAt(p) {
-                drag = Drag(hive: hive.id, start: p, offset: (p.x - Double(hive.x), p.y - Double(hive.y)), at: (hive.x, hive.y))
+                drag = Drag(item: .hive(hive.id), start: p, offset: (p.x - Double(hive.x), p.y - Double(hive.y)), at: (hive.x, hive.y))
                 return true
             }
         case .hive(let id):
@@ -144,7 +154,18 @@ final class Game {
                 else { stall.show("need \(World.hiveBoxPrice) jars") }
                 return true
             }
+            if Widgets.contains(StallRenderer.hireRect, p), world.canHireHelper { go(to: .helpers); return true }
             if Widgets.contains(StallRenderer.valleyRect, p) { go(to: .valley); return true }
+        case .helpers:
+            if Widgets.contains(Widgets.backRect, p) { go(to: .stall); return true }
+            for (i, kind) in HelperKind.allCases.enumerated() where Widgets.contains(StallRenderer.helperRect(i), p) {
+                if world.hireHelper(kind) != nil {
+                    go(to: .stall)
+                    stall.show("\(kind.title) is in your shed")
+                    onChange?()
+                } else { stall.show("need \(World.helperPrice) jars") }
+                return true
+            }
         case .picker(let plot):
             if Widgets.contains(Widgets.backRect, p) { go(to: .valley); return true }
             for (i, kind) in GardenKind.allCases.enumerated() where Widgets.contains(StallRenderer.pickerRect(i), p) {
@@ -171,13 +192,20 @@ final class Game {
     func release(_ p: (x: Double, y: Double)) {
         guard let d = drag else { return }
         drag = nil
-        if d.moved {
-            if overShed(p) {
-                if world.pack(hive: d.hive) == .packing, let hive = world.hive(d.hive) { show(["\(hive.name) is packing up"]); onChange?() }
-                else { show(["Not right now", "the bees are busy"]) }
-            } else if world.move(hive: d.hive, x: d.at.x, y: d.at.y) { onChange?() }
-        } else {
-            go(to: .hive(d.hive))
+        switch d.item {
+        case .helper(let id):
+            guard d.moved else { return }
+            if overShed(p) { world.storeHelper(id); onChange?() }
+            else if world.moveHelper(id, x: d.at.x, y: d.at.y) { onChange?() }
+        case .hive(let id):
+            if d.moved {
+                if overShed(p) {
+                    if world.pack(hive: id) == .packing, let hive = world.hive(id) { show(["\(hive.name) is packing up"]); onChange?() }
+                    else { show(["Not right now", "the bees are busy"]) }
+                } else if world.move(hive: id, x: d.at.x, y: d.at.y) { onChange?() }
+            } else {
+                go(to: .hive(id))
+            }
         }
     }
 
@@ -200,6 +228,7 @@ final class Game {
         case .book: go(to: .pantry)
         case .stall: go(to: stallReturnsToGarden ? .garden : .valley)
         case .picker: go(to: .valley)
+        case .helpers: go(to: .stall)
         }
     }
 
@@ -228,6 +257,9 @@ final class Game {
         switch placing {
         case .emptyBox: placed = world.placeBox(x: spot.x, y: spot.y, in: currentGarden)
         case .hive(let id): placed = world.unpack(hive: id, x: spot.x, y: spot.y, in: currentGarden)
+        case .helper(let id):
+            let feet = helperSpot(p)
+            placed = world.placeHelper(id, x: feet.x, y: feet.y, in: currentGarden)
         case nil: placed = false
         }
         if placed { placing = nil; onChange?() }
@@ -237,13 +269,17 @@ final class Game {
         (Int((p.x - 9).rounded()), Int((p.y + 12).rounded()))
     }
 
+    private func helperSpot(_ p: (x: Double, y: Double)) -> (x: Int, y: Int) {
+        (Int(p.x.rounded()), Int((p.y + 7).rounded()))
+    }
+
     private func show(_ lines: [String]) { note = (lines, 0) }
 
     func isInteractive(_ p: (x: Double, y: Double)) -> Bool {
         switch scene {
         case .garden:
             if shedOpen { return shedLayout().rows.contains { $0.enabled && Widgets.contains($0.rect, p) } }
-            return placing != nil || hiveAt(p) != nil || [Widgets.mapRect, Widgets.pantryRect, Widgets.shedRect].contains { Widgets.contains($0, p) }
+            return placing != nil || helperAt(p) != nil || hiveAt(p) != nil || [Widgets.mapRect, Widgets.pantryRect, Widgets.shedRect].contains { Widgets.contains($0, p) }
                 || (canSleep && Widgets.contains(Widgets.bedRect, p))
         case .hive(let id):
             guard let hive = world.hive(id) else { return false }
@@ -253,8 +289,15 @@ final class Game {
         case .book: return Widgets.contains(Widgets.backRect, p)
         case .valley: return Widgets.contains(Widgets.backRect, p) || Widgets.contains(ValleyRenderer.stallRect, p) || ValleyRenderer.plot(at: p) != nil
         case .stall: return [Widgets.backRect, StallRenderer.tradeRect, StallRenderer.valleyRect].contains { Widgets.contains($0, p) }
+            || (world.canHireHelper && Widgets.contains(StallRenderer.hireRect, p))
+        case .helpers: return Widgets.contains(Widgets.backRect, p) || (0..<HelperKind.allCases.count).contains { Widgets.contains(StallRenderer.helperRect($0), p) }
         case .picker: return Widgets.contains(Widgets.backRect, p) || (0..<GardenKind.allCases.count).contains { Widgets.contains(StallRenderer.pickerRect($0), p) }
         }
+    }
+
+    private func helperAt(_ p: (x: Double, y: Double)) -> Helper? {
+        guard let helper = world.helper(in: currentGarden) else { return nil }
+        return abs(p.x - helper.x) <= 6 && p.y >= helper.y - 14 && p.y <= helper.y + 1 ? helper : nil
     }
 
     private func hiveAt(_ p: (x: Double, y: Double)) -> Hive? {
@@ -274,16 +317,34 @@ final class Game {
         case .garden:
             guard let garden else { return nil }
             var ghost: GardenRenderer.Ghost?
+            var helperGhost: (kind: HelperKind, x: Int, y: Int, valid: Bool)?
+            var hidingHelper: Int?
+            let packing = mouse.map(overShed) ?? false
             if let d = drag, d.moved {
-                let packing = mouse.map(overShed) ?? false
-                ghost = .init(x: d.at.x, y: d.at.y, valid: packing || world.canPlace(x: d.at.x, y: d.at.y, in: currentGarden, ignoring: d.hive), hiding: d.hive)
-            } else if placing != nil, let m = mouse {
-                let spot = ghostSpot(m)
-                ghost = .init(x: spot.x, y: spot.y, valid: world.canPlace(x: spot.x, y: spot.y, in: currentGarden), hiding: nil)
+                switch d.item {
+                case .hive(let id):
+                    ghost = .init(x: d.at.x, y: d.at.y, valid: packing || world.canPlace(x: d.at.x, y: d.at.y, in: currentGarden, ignoring: id), hiding: id)
+                case .helper(let id):
+                    hidingHelper = id
+                    if let helper = world.helper(id) { helperGhost = (helper.kind, d.at.x, d.at.y, packing || world.canPlaceHelper(x: d.at.x, y: d.at.y)) }
+                }
+            } else if let m = mouse {
+                switch placing {
+                case .helper(let id):
+                    let feet = helperSpot(m)
+                    if let helper = world.helper(id) { helperGhost = (helper.kind, feet.x, feet.y, world.canPlaceHelper(x: feet.x, y: feet.y)) }
+                case .emptyBox, .hive:
+                    let spot = ghostSpot(m)
+                    ghost = .init(x: spot.x, y: spot.y, valid: world.canPlace(x: spot.x, y: spot.y, in: currentGarden), hiding: nil)
+                case nil: break
+                }
             }
             let hover = mouse.flatMap { hiveAt($0)?.id }
-            gardenView.render(world, garden: garden, minute: minute, time: time, ghost: ghost, hover: drag == nil && placing == nil && !shedOpen ? hover : nil)
+            gardenView.render(world, garden: garden, minute: minute, time: time, ghost: ghost, hover: drag == nil && placing == nil && !shedOpen ? hover : nil, hidingHelper: hidingHelper)
             canvas = gardenView.canvas
+            if let g = helperGhost {
+                HelperSprite.draw(g.kind, on: canvas, x: g.x - 8, y: g.y - 16, pose: .walk, frame: Int(time * 6), dim: g.valid ? 0 : 0.6)
+            }
             if canSleep { Widgets.bedIcon(canvas, lifted: !shedOpen && placing == nil && (mouse.map { Widgets.contains(Widgets.bedRect, $0) } ?? false)) }
             if let d = drag, d.moved, let m = mouse, overShed(m) { highlightShed(canvas) }
             if shedOpen { drawShedPanel(canvas) }
@@ -304,6 +365,9 @@ final class Game {
             canvas = stall.canvas
         case .picker:
             stall.renderPicker(world, time: time, dt: dt, hover: mouse)
+            canvas = stall.canvas
+        case .helpers:
+            stall.renderHelpers(world, time: time, dt: dt, hover: mouse)
             canvas = stall.canvas
         }
         if var n = note {
@@ -364,10 +428,14 @@ final class Game {
         if layout.rows.count == 2 { PixelFont.draw("empty", on: canvas, x: r.x + 12, y: r.y + 26, colour: Widgets.C.ink) }
         for row in layout.rows {
             switch row.action {
+            case .helper(let id):
+                Widgets.button(canvas, row.rect, label: "", enabled: row.enabled)
+                if let helper = world.helper(id) { HelperSprite.portrait(helper.kind, on: canvas, x: row.rect.x + 1, y: row.rect.y + 1, dim: !row.enabled) }
+                PixelFont.draw(row.label, on: canvas, x: row.rect.x + 20, y: row.rect.y + 4, colour: row.enabled ? Widgets.C.buttonText : Widgets.C.buttonOffText)
             case .emptyBox, .hive:
                 Widgets.button(canvas, row.rect, label: "", enabled: row.enabled)
-                Widgets.tinyHiveBox(canvas, x: row.rect.x + 4, y: row.rect.y + 1, dim: !row.enabled)
-                PixelFont.draw(row.label, on: canvas, x: row.rect.x + 17, y: row.rect.y + 4, colour: row.enabled ? Widgets.C.buttonText : Widgets.C.buttonOffText)
+                Widgets.tinyHiveBox(canvas, x: row.rect.x + 5, y: row.rect.y + 1, dim: !row.enabled)
+                PixelFont.draw(row.label, on: canvas, x: row.rect.x + 20, y: row.rect.y + 4, colour: row.enabled ? Widgets.C.buttonText : Widgets.C.buttonOffText)
             case .stall, .close:
                 Widgets.button(canvas, row.rect, label: row.label, enabled: row.enabled)
             }

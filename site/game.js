@@ -106,7 +106,7 @@ async function load() {
     ConsoleStdout.lineBuffered((line) => console.warn(line)),
   ]);
   const imports = { wasi_snapshot_preview1: wasi.wasiImport };
-  const url = "/bee.wasm?v=5";
+  const url = "/bee.wasm?v=6";
   let instance;
   try {
     ({ instance } = await WebAssembly.instantiateStreaming(fetch(url), imports));

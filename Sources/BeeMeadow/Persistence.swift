@@ -31,6 +31,13 @@ private struct SaveV2: Codable {
         let bees: [SavedBee]
     }
 
+    struct SavedHelper: Codable {
+        let kind: HelperKind
+        let garden: Int
+        let x: Int
+        let y: Int
+    }
+
     let version: Int
     let savedAt: Date
     let gardens: [SavedGarden]
@@ -43,6 +50,7 @@ private struct SaveV2: Codable {
     let nextGardenID: Int
     let currentGarden: Int?
     let clockOffset: Double?
+    let helpers: [SavedHelper]?
 }
 
 private struct SaveV1: Codable {
@@ -87,7 +95,8 @@ enum Persistence {
                 )
             },
             jars: world.jars, harvests: world.harvests, spareBoxes: world.spareBoxes,
-            nextBeeID: world.nextBeeID, nextHiveID: world.nextHiveID, nextGardenID: world.nextGardenID, currentGarden: currentGarden, clockOffset: Clock.offset
+            nextBeeID: world.nextBeeID, nextHiveID: world.nextHiveID, nextGardenID: world.nextGardenID, currentGarden: currentGarden, clockOffset: Clock.offset,
+            helpers: world.helpers.map { SaveV2.SavedHelper(kind: $0.kind, garden: $0.garden, x: $0.home.x, y: $0.home.y) }
         )
         return try JSONEncoder.iso.encode(save)
     }
@@ -122,9 +131,12 @@ enum Persistence {
         let gardens = save.gardens.map { Garden(id: $0.id, kind: $0.kind, plot: $0.plot, nextHornetIn: $0.nextHornetIn ?? World.hornetMeanSeconds) }
         let hives = save.hives.map { Hive(id: $0.id, name: $0.name, garden: $0.garden, x: $0.x, y: $0.y, honey: $0.honey, queenEmergesIn: $0.queenEmergesIn) }
         let bees = save.hives.flatMap { hive in hive.bees.map { Bee(id: $0.id, hive: hive.id, role: $0.role) } }
+        let helpers = (save.helpers ?? []).enumerated().map { i, saved in
+            Helper(id: i, kind: saved.kind, garden: saved.garden >= 0 && gardens.contains { $0.id == saved.garden } ? saved.garden : -1, x: saved.x, y: saved.y)
+        }
         return World(
             gardens: gardens, hives: hives, bees: bees, jars: save.jars, harvests: save.harvests, spareBoxes: save.spareBoxes,
-            nextBeeID: save.nextBeeID, nextHiveID: save.nextHiveID, nextGardenID: save.nextGardenID
+            nextBeeID: save.nextBeeID, nextHiveID: save.nextHiveID, nextGardenID: save.nextGardenID, helpers: helpers
         )
     }
 

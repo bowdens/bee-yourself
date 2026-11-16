@@ -105,6 +105,9 @@ final class World {
     static let tripsPerForagerMinute = 3.5
     static let hivesPerGarden = 4
     static let hiveBoxPrice = 3
+    static let helperPrice = 20
+    static let helperSpeed = 16.0
+    static let helperArea = (minX: 8, maxX: 232, minY: Layout.horizon + 14, maxY: 174)
     static let hornetMeanSeconds = 7200.0
     static let names = [
         "Pip", "Hazel", "Juniper", "Willow", "Fern", "Maple", "Poppy", "Sorrel", "Wren", "Acorn", "Pebble", "Thistle", "Marigold",
@@ -118,6 +121,7 @@ final class World {
     var jars: [Jar]
     var harvests: [Jar]
     var spareBoxes: Int
+    var helpers: [Helper]
     var nextBeeID: Int
     var nextHiveID: Int
     var nextGardenID: Int
@@ -127,13 +131,14 @@ final class World {
     private var hiveByID: [Int: Hive] = [:]
     private var random = SeededRandom(seed: Int(Date().timeIntervalSince1970) % 100_000 + 1)
 
-    init(gardens: [Garden], hives: [Hive], bees: [Bee], jars: [Jar], harvests: [Jar], spareBoxes: Int, nextBeeID: Int, nextHiveID: Int, nextGardenID: Int) {
+    init(gardens: [Garden], hives: [Hive], bees: [Bee], jars: [Jar], harvests: [Jar], spareBoxes: Int, nextBeeID: Int, nextHiveID: Int, nextGardenID: Int, helpers: [Helper] = []) {
         self.gardens = gardens
         self.hives = hives
         self.bees = bees
         self.jars = jars
         self.harvests = harvests
         self.spareBoxes = spareBoxes
+        self.helpers = helpers
         self.nextBeeID = nextBeeID
         self.nextHiveID = nextHiveID
         self.nextGardenID = nextGardenID
@@ -191,6 +196,19 @@ final class World {
 
     var packedHives: [Hive] { hives.filter(\.isPacked) }
 
+    var storedHelpers: [Helper] { helpers.filter(\.isStored) }
+
+    var canHireHelper: Bool { helpers.count < gardens.count }
+
+    func helper(in garden: Int) -> Helper? { helpers.first { $0.garden == garden } }
+
+    func helper(_ id: Int) -> Helper? { helpers.first { $0.id == id } }
+
+    func canPlaceHelper(x: Int, y: Int) -> Bool {
+        let a = World.helperArea
+        return x >= a.minX && x <= a.maxX && y >= a.minY && y <= a.maxY
+    }
+
     func hasRoom(in garden: Int) -> Bool { hives(in: garden).count < World.hivesPerGarden }
 
     func beeCount(hive: Int) -> Int { bees.reduce(0) { $0 + ($1.hive == hive && !isLeaving($1) ? 1 : 0) } }
@@ -246,6 +264,33 @@ final class World {
         jars.removeFirst(World.hiveBoxPrice)
         spareBoxes += 1
         return true
+    }
+
+    func hireHelper(_ kind: HelperKind) -> Helper? {
+        guard jars.count >= World.helperPrice, canHireHelper else { return nil }
+        jars.removeFirst(World.helperPrice)
+        let helper = Helper(id: (helpers.map(\.id).max() ?? -1) + 1, kind: kind, garden: -1, x: 0, y: 0)
+        helpers.append(helper)
+        return helper
+    }
+
+    func placeHelper(_ id: Int, x: Int, y: Int, in garden: Int) -> Bool {
+        guard let helper = helper(id), helper.isStored, self.helper(in: garden) == nil, canPlaceHelper(x: x, y: y) else { return false }
+        helper.garden = garden
+        helper.settle(at: x, y)
+        return true
+    }
+
+    func moveHelper(_ id: Int, x: Int, y: Int) -> Bool {
+        guard let helper = helper(id), !helper.isStored, canPlaceHelper(x: x, y: y) else { return false }
+        helper.settle(at: x, y)
+        return true
+    }
+
+    func storeHelper(_ id: Int) {
+        guard let helper = helper(id) else { return }
+        helper.garden = -1
+        helper.settle(at: 0, 0)
     }
 
     func buyGarden(kind: GardenKind, plot: Int) -> Garden? {
@@ -355,6 +400,7 @@ final class World {
         }
         for hive in hives where !hive.isPacked { grow(hive, dt: dt, census: census[hive.id] ?? (0, false)) }
         finishPacking()
+        for helper in helpers where !helper.isStored { step(helper, dt: dt, activity: activity) }
         if let visibleGarden, let garden = garden(visibleGarden) { updateHornet(garden, dt: dt, activity: activity, time: time) }
     }
 
@@ -473,6 +519,51 @@ final class World {
                 bee.state = .inside(wait: 2 + random.next() * 4)
             }
         }
+    }
+
+    private func step(_ helper: Helper, dt: Double, activity: Double) {
+        switch helper.task {
+        case .idle(let wait):
+            helper.asleep = !helper.kind.isAwake(activity: activity)
+            guard !helper.asleep else { return }
+            if wait > 0 { helper.task = .idle(wait: wait - dt); return }
+            let full = hives(in: helper.garden).filter { $0.isFull && !$0.packing }
+            if let hive = full.min(by: { distance(helper, to: $0) < distance(helper, to: $1) }) { helper.task = .toHive(hive.id) }
+            else { helper.task = .idle(wait: 2) }
+        case .toHive(let id):
+            guard let hive = hive(id), hive.garden == helper.garden, hive.isFull else { helper.task = .home; return }
+            let spot = helperSpot(hive)
+            if walk(helper, to: spot, dt: dt) { helper.task = .collecting(id, wait: 1.2); helper.facing = -1 }
+        case .collecting(let id, let wait):
+            if wait > 0 { helper.task = .collecting(id, wait: wait - dt); return }
+            helper.carrying = hive(id)?.garden == helper.garden && collect(hive: id, at: Date()) != nil
+            helper.task = .home
+        case .home:
+            if walk(helper, to: (Double(helper.home.x), Double(helper.home.y)), dt: dt) {
+                helper.carrying = false
+                helper.task = .idle(wait: 1.5 + random.next() * 2)
+            }
+        }
+    }
+
+    private func helperSpot(_ hive: Hive) -> (x: Double, y: Double) {
+        (Double(min(World.helperArea.maxX, hive.x + 26)), Double(min(World.helperArea.maxY, hive.y + 1)))
+    }
+
+    private func distance(_ helper: Helper, to hive: Hive) -> Double {
+        let spot = helperSpot(hive)
+        return hypot(spot.x - helper.x, spot.y - helper.y)
+    }
+
+    private func walk(_ helper: Helper, to target: (x: Double, y: Double), dt: Double) -> Bool {
+        let dx = target.x - helper.x, dy = target.y - helper.y, d = hypot(dx, dy)
+        let step = World.helperSpeed * dt
+        if abs(dx) > 0.5 { helper.facing = dx > 0 ? 1 : -1 }
+        helper.walked += dt
+        guard d > step else { helper.x = target.x; helper.y = target.y; return true }
+        helper.x += dx / d * step
+        helper.y += dy / d * step
+        return false
     }
 
     private func grow(_ hive: Hive, dt: Double, census: (bees: Int, queen: Bool)) {
@@ -608,6 +699,7 @@ final class World {
     func catchUp(from start: Date, to end: Date) {
         let elapsed = min(end.timeIntervalSince(start), 7 * 24 * 3600)
         guard elapsed > 1 else { return }
+        for helper in helpers where !helper.isStored { helper.settle(at: helper.home.x, helper.home.y) }
         var t = end.addingTimeInterval(-elapsed)
         while t < end {
             let step = min(60, end.timeIntervalSince(t))
@@ -615,6 +707,9 @@ final class World {
             for hive in hives where !hive.isFull && !hive.isPacked {
                 let trips = activity * Double(foragerCount(hive: hive.id)) * World.tripsPerForagerMinute * step / 60
                 hive.honey = min(1, hive.honey + trips * World.tripYield)
+            }
+            for hive in hives where hive.isFull && !hive.isPacked {
+                if let helper = helper(in: hive.garden), helper.kind.isAwake(activity: activity) { collect(hive: hive.id, at: t) }
             }
             t = t.addingTimeInterval(step)
         }

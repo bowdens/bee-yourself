@@ -114,6 +114,31 @@ enum SelfTest {
         }
         check(start.readyToSplit(pip) && !start.atFullStrength(pip), "half strength hive can split")
         check(start.placeBox(x: 100, y: 160, in: pip.garden) && start.split(hive: pip.id) != nil, "first split into the free box")
+
+        let helped = World.fresh()
+        helped.hornetsEnabled = false
+        helped.jars = (0..<45).map { _ in Jar(honey: "Clover", hiveName: "Pip", collectedAt: Date()) }
+        let bear = helped.hireHelper(.bear)
+        check(bear != nil && helped.jars.count == 25 && bear!.isStored, "hire a bear for 20 jars into the shed")
+        check(helped.hireHelper(.mouse) != nil && helped.hireHelper(.badger) == nil, "one helper per garden")
+        check(helped.placeHelper(bear!.id, x: 70, y: 160, in: 0), "place the bear in the clover garden")
+        let mouse = helped.storedHelpers[0]
+        check(!helped.placeHelper(mouse.id, x: 80, y: 160, in: 0), "a garden only takes one helper")
+        let clover = helped.hives(in: 0)[0]
+        clover.honey = 1
+        let jarsAtStart = helped.jars.count
+        for i in 0..<300 { helped.tick(0.1, minute: 30, time: Double(i) * 0.1, visibleGarden: 0) }
+        check(helped.jars.count == jarsAtStart + 1 && clover.honey < 0.1, "bear collects a full hive")
+        check(abs(bear!.x - 70) < 1 && !bear!.carrying, "bear walks home after collecting")
+        helped.storeHelper(bear!.id)
+        check(bear!.isStored && helped.helper(in: 0) == nil, "drag the bear back into the shed")
+        check(helped.placeHelper(mouse.id, x: 70, y: 160, in: 1) && helped.placeHelper(bear!.id, x: 60, y: 150, in: 0), "swap helpers between gardens")
+        let away = helped.jars.count
+        helped.catchUp(from: Date().addingTimeInterval(-6 * 3600), to: Date())
+        check(helped.jars.count > away + 2, "helpers keep collecting while away (\(helped.jars.count - away) jars)")
+        let data = try? Persistence.encode(helped, currentGarden: 0, now: Date())
+        let restored = data.map { Persistence.decode($0, now: Date()).world }
+        check(restored?.helpers.count == 2 && restored?.helper(in: 0)?.kind == .bear && restored?.helper(in: 1)?.kind == .mouse, "helpers survive save and load")
         return ok
     }
 }

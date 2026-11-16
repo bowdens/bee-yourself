@@ -8,8 +8,13 @@ import WASILibc
 #endif
 
 final class StallRenderer {
-    static let tradeRect: PixelRect = (150, 62, 44, 13)
-    static let valleyRect: PixelRect = (150, 122, 54, 13)
+    static let tradeRect: PixelRect = (150, 47, 44, 13)
+    static let hireRect: PixelRect = (150, 93, 44, 13)
+    static let valleyRect: PixelRect = (150, 139, 54, 13)
+
+    static func helperRect(_ index: Int) -> PixelRect {
+        (11 + index * 56, 46, 50, 72)
+    }
 
     static func pickerRect(_ index: Int) -> PixelRect {
         (12 + (index % 3) * 76, 34 + (index / 3) * 70, 64, 60)
@@ -28,18 +33,25 @@ final class StallRenderer {
 
     func renderStall(_ world: World, time: Double, dt: Double) {
         backdrop()
-        card(x: 16, y: 40, w: 208, h: 46)
-        hiveBoxIcon(x: 26, y: 72)
-        PixelFont.draw("Hive box", on: canvas, x: 56, y: 50, colour: C.title)
-        PixelFont.draw("\(World.hiveBoxPrice) jars", on: canvas, x: 56, y: 60, colour: C.muted)
-        PixelFont.draw("in your shed: \(world.spareBoxes)", on: canvas, x: 56, y: 72, colour: C.muted)
+        card(x: 16, y: 34, w: 208, h: 38)
+        hiveBoxIcon(x: 26, y: 68)
+        PixelFont.draw("Hive box", on: canvas, x: 56, y: 40, colour: C.title)
+        PixelFont.draw("\(World.hiveBoxPrice) jars", on: canvas, x: 56, y: 50, colour: C.muted)
+        PixelFont.draw("in your shed: \(world.spareBoxes)", on: canvas, x: 56, y: 60, colour: C.muted)
         Widgets.button(canvas, StallRenderer.tradeRect, label: "Trade", enabled: world.jars.count >= World.hiveBoxPrice)
 
-        card(x: 16, y: 100, w: 208, h: 46)
-        Widgets.mapIconAt(canvas, x: 28, y: 114)
-        PixelFont.draw("New garden", on: canvas, x: 56, y: 110, colour: C.title)
-        PixelFont.draw("\(world.gardenPrice()) jars", on: canvas, x: 56, y: 120, colour: C.muted)
-        PixelFont.draw(world.freePlots().isEmpty ? "the valley is full" : "pick a plot", on: canvas, x: 56, y: 132, colour: C.muted)
+        card(x: 16, y: 80, w: 208, h: 38)
+        HelperSprite.draw(.bear, on: canvas, x: 27, y: 91, pose: .idle, frame: 0)
+        PixelFont.draw("Helper", on: canvas, x: 56, y: 86, colour: C.title)
+        PixelFont.draw("\(World.helperPrice) jars", on: canvas, x: 56, y: 96, colour: C.muted)
+        PixelFont.draw(world.canHireHelper ? "collects honey" : "one per garden", on: canvas, x: 56, y: 106, colour: C.muted)
+        Widgets.button(canvas, StallRenderer.hireRect, label: "Hire", enabled: world.canHireHelper)
+
+        card(x: 16, y: 126, w: 208, h: 38)
+        Widgets.mapIconAt(canvas, x: 28, y: 138)
+        PixelFont.draw("New garden", on: canvas, x: 56, y: 132, colour: C.title)
+        PixelFont.draw("\(world.gardenPrice()) jars", on: canvas, x: 56, y: 142, colour: C.muted)
+        PixelFont.draw(world.freePlots().isEmpty ? "the valley is full" : "pick a plot", on: canvas, x: 56, y: 152, colour: C.muted)
         Widgets.button(canvas, StallRenderer.valleyRect, label: "To valley", enabled: true)
 
         Widgets.header(canvas, title: "Honey stall", detail: world.jars.count == 1 ? "1 jar" : "\(world.jars.count) jars")
@@ -69,6 +81,23 @@ final class StallRenderer {
         }
         let detail = affordable ? "\(price) jars" : "need \(price) jars"
         Widgets.header(canvas, title: "New garden", detail: detail)
+        drawToast(dt: dt)
+    }
+
+    func renderHelpers(_ world: World, time: Double, dt: Double, hover: (x: Double, y: Double)?) {
+        backdrop()
+        let affordable = world.jars.count >= World.helperPrice
+        for (i, kind) in HelperKind.allCases.enumerated() {
+            let r = StallRenderer.helperRect(i)
+            let hovered = affordable && (hover.map { Widgets.contains(r, $0) } ?? false)
+            card(x: r.x, y: r.y, w: r.w, h: r.h, lifted: hovered)
+            let lift = hovered ? 1 : 0
+            HelperSprite.draw(kind, on: canvas, x: r.x + 9, y: r.y + 10 - lift, pose: hovered ? .walk : .idle, frame: Int(time * 6), scale: 2)
+            let name = kind.title
+            PixelFont.draw(name, on: canvas, x: r.x + (r.w - PixelFont.width(name)) / 2, y: r.y + 56 - lift, colour: C.title)
+            if !affordable { canvas.fill(Double(r.x), Double(r.y), r.w, r.h, C.dim, alpha: 0.35) }
+        }
+        Widgets.header(canvas, title: "Helper", detail: affordable ? "\(World.helperPrice) jars" : "need \(World.helperPrice) jars")
         drawToast(dt: dt)
     }
 

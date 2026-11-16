@@ -41,7 +41,7 @@ final class GardenRenderer {
     private var stars: [Star] = []
     private var clouds = [Cloud(x: 24, y: 22, width: 30), Cloud(x: 140, y: 34, width: 20), Cloud(x: 200, y: 14, width: 26)]
     private var fireflies: [Firefly] = []
-    private var drawOrder: [Prop] = []
+    private var drawOrder: [(y: Int, prop: Prop)] = []
     private var orderKey = -1
 
     init() {
@@ -53,7 +53,7 @@ final class GardenRenderer {
         fireflies = (0..<10).map { _ in Firefly(x: 104 + r.next() * 136, y: Double(horizon) + 4 + r.next() * 60, phase: r.next() * 10, drift: r.next() - 0.5) }
     }
 
-    func render(_ world: World, garden: Garden, minute: Double, time: Double, ghost: Ghost?, hover: Int?) {
+    func render(_ world: World, garden: Garden, minute: Double, time: Double, ghost: Ghost?, hover: Int?, hidingHelper: Int? = nil) {
         let light = Clock.light(at: minute)
         let hives = world.hives(in: garden.id)
         let layout = hives.reduce(hives.count) { $0 &* 31 &+ $1.x &* 7 &+ $1.y } &+ (ghost?.hiding ?? -1)
@@ -74,9 +74,12 @@ final class GardenRenderer {
             var props: [(y: Int, prop: Prop)] = hives.map { ($0.y, .hive($0.id)) }
             props += garden.flowers.enumerated().map { ($0.element.y, .flower($0.offset)) }
             props.append((Layout.lantern.y, .lantern))
-            drawOrder = props.sorted { $0.y < $1.y }.map(\.prop)
+            drawOrder = props.sorted { $0.y < $1.y }
         }
-        for prop in drawOrder {
+        let helper = world.helper(in: garden.id).flatMap { $0.id == hidingHelper ? nil : $0 }
+        var helperDrawn = helper == nil
+        for (y, prop) in drawOrder {
+            if !helperDrawn, let helper, Double(y) > helper.y { drawHelper(helper, time: time, dark: dark); helperDrawn = true }
             switch prop {
             case .hive(let id):
                 guard id != ghost?.hiding, let hive = world.hive(id) else { continue }
@@ -85,6 +88,7 @@ final class GardenRenderer {
             case .lantern: drawLanternPost()
             }
         }
+        if !helperDrawn, let helper { drawHelper(helper, time: time, dark: dark) }
         drawBees(world, garden: garden, time: time)
         if let hornet = garden.hornet { drawHornet(hornet, time: time) }
         for puff in world.puffs {
@@ -93,9 +97,10 @@ final class GardenRenderer {
             canvas.fill(p.x, p.y - r, 1, 1, P.puff); canvas.fill(p.x, p.y + r, 1, 1, P.puff)
         }
         Widgets.jar(canvas, honey: garden.kind.honeyName, x: Double(Widgets.pantryRect.x + 2), y: Double(Widgets.pantryRect.y + 2))
-        Widgets.shedIcon(canvas, count: world.spareBoxes)
+        Widgets.shedIcon(canvas, count: world.spareBoxes + world.storedHelpers.count)
         canvas.tint = .white
         drawGlows(world, hives: hives, time: time, dark: dark)
+        if let helper { drawHelperGlow(helper, time: time, dark: dark) }
         if let ghost { drawGhost(ghost) }
         Widgets.mapIcon(canvas)
     }
@@ -334,6 +339,29 @@ final class GardenRenderer {
             canvas.fill(x - bee.facing, y, 1, 1, P.beeDark)
             if wingUp { canvas.fill(x, y - 1, 1, 1, P.wing) }
         }
+    }
+
+    private func helperPose(_ h: Helper, time: Double) -> (pose: HelperSprite.Pose, frame: Int) {
+        if h.isWalking { return (h.carrying ? .carry : .walk, Int(h.walked * 8)) }
+        if h.asleep { return (.sleep, Int(time * 1.2)) }
+        let blink = (time + Double(h.id) * 1.7).truncatingRemainder(dividingBy: 3.6) < 0.15
+        return (blink ? .blink : .idle, 0)
+    }
+
+    private func drawHelper(_ h: Helper, time: Double, dark: Double) {
+        let (pose, frame) = helperPose(h, time: time)
+        let x = Int(h.x.rounded()), y = Int(h.y.rounded())
+        canvas.fill(Double(x - 5), Double(y + 1), 10, 1, RGB("#000000"), alpha: 0.18)
+        HelperSprite.draw(h.kind, on: canvas, x: x - 8, y: y - 15, pose: pose, frame: frame, flip: h.facing < 0, lantern: h.kind == .mouse && dark > 0.3)
+    }
+
+    private func drawHelperGlow(_ h: Helper, time: Double, dark: Double) {
+        guard h.kind == .mouse, dark > 0.3 else { return }
+        let (pose, frame) = helperPose(h, time: time)
+        guard let p = HelperSprite.lanternPoint(h.kind, pose: pose, frame: frame) else { return }
+        let lx = Double(h.facing < 0 ? Int(h.x.rounded()) - 8 + 15 - p.x : Int(h.x.rounded()) - 8 + p.x), ly = Double(Int(h.y.rounded()) - 15 + p.y)
+        let k = dark * (0.9 + 0.1 * sin(time * 6))
+        for y in -9...9 { for x in -9...9 where x * x + y * y <= 81 { canvas.fill(lx + Double(x), ly + Double(y), 1, 1, P.lanternLight, alpha: 0.08 * k) } }
     }
 
     private func drawHornet(_ h: Hornet, time: Double) {
