@@ -92,21 +92,33 @@ enum Recorder {
             .move(0.5, { centre(Widgets.mapRect) }), .wait(0.5), .click, .day(26),
             .wait(1.0), .move(0.5, { centre(ValleyRenderer.stallRect) }), .wait(0.4), .click,
             .wait(0.8), .move(0.5, { centre(StallRenderer.tradeRect) }), .wait(0.5), .click,
-            .wait(1.8),
+            .wait(1.6),
+            .move(0.5, { centre(StallRenderer.hireRect) }), .wait(0.5), .click,
+            .wait(0.6), .move(0.5, { centre(StallRenderer.helperRect(2)) }), .wait(0.6), .move(0.5, { centre(StallRenderer.helperRect(0)) }), .wait(0.8), .click,
+            .wait(1.6),
             .move(0.5, { centre(StallRenderer.valleyRect) }), .wait(0.5), .click,
             .wait(0.6), .move(0.5, { centre(ValleyRenderer.plotRect(newPlot)) }), .wait(0.4), .click,
             .wait(0.6), .move(0.5, { centre(StallRenderer.pickerRect(1)) }), .wait(0.5), .move(0.5, { centre(StallRenderer.pickerRect(3)) }), .wait(0.5), .click, .day(38),
             .wait(4.4),
             .move(0.5, { centre(Widgets.shedRect) }), .wait(0.5), .click,
             .wait(0.8), .move(0.5, { centre(view.shedLayout().rows[0].rect) }), .wait(0.4), .click,
+            .move(0.5, { (150, 152) }), .wait(0.4), .click,
+            .wait(1.2), .move(0.5, { centre(Widgets.shedRect) }), .wait(0.5), .click,
+            .wait(0.8), .move(0.5, { centre(view.shedLayout().rows[0].rect) }), .wait(0.4), .click,
             .move(0.5, { (70, 150) }), .wait(0.4), .click,
-            .wait(6.0), .day(54),
+            .wait(3.0), .move(0.5, { bear(world) }), .wait(0.3), .click, .release,
+            .wait(4.0), .day(54),
             .move(0.5, { centre(Widgets.mapRect) }), .wait(0.5), .click,
             .wait(0.6), .move(0.5, { centre(ValleyRenderer.plotRect(4)) }), .wait(0.4), .click, .day(60),
             .wait(8.0),
             .move(0.5, { centre(Widgets.bedRect) }), .wait(0.5), .click,
             .wait(1.6), .day(65),
         ]
+    }
+
+    private static func bear(_ world: World) -> P {
+        guard let helper = world.helpers.first(where: { !$0.isStored }) else { return (150, 145) }
+        return (helper.x, helper.y - 6)
     }
 
     private static func keys(for steps: [Step]) -> [(t: Double, minute: Double)] {
