@@ -194,7 +194,7 @@ final class Game {
         drag = nil
         switch d.item {
         case .helper(let id):
-            guard d.moved else { return }
+            guard d.moved else { world.helper(id)?.pet(); return }
             if overShed(p) { world.storeHelper(id); onChange?() }
             else if world.moveHelper(id, x: d.at.x, y: d.at.y) { onChange?() }
         case .hive(let id):

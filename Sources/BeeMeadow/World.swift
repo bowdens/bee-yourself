@@ -522,14 +522,19 @@ final class World {
     }
 
     private func step(_ helper: Helper, dt: Double, activity: Double) {
+        helper.heart = max(0, helper.heart - dt)
         switch helper.task {
         case .idle(let wait):
             helper.asleep = !helper.kind.isAwake(activity: activity)
             guard !helper.asleep else { return }
+            if goToFullHive(helper) { return }
             if wait > 0 { helper.task = .idle(wait: wait - dt); return }
-            let full = hives(in: helper.garden).filter { $0.isFull && !$0.packing }
-            if let hive = full.min(by: { distance(helper, to: $0) < distance(helper, to: $1) }) { helper.task = .toHive(hive.id) }
-            else { helper.task = .idle(wait: 2) }
+            potter(helper)
+        case .stroll(let x, let y):
+            if goToFullHive(helper) { return }
+            if walk(helper, to: (x, y), dt: dt, speed: World.helperSpeed * 0.5) { helper.task = .idle(wait: 1 + random.next() * 2) }
+        case .nap(let wait):
+            helper.task = wait > 0 ? .nap(wait: wait - dt) : .idle(wait: 1)
         case .toHive(let id):
             guard let hive = hive(id), hive.garden == helper.garden, hive.isFull else { helper.task = .home; return }
             let spot = helperSpot(hive)
@@ -546,6 +551,27 @@ final class World {
         }
     }
 
+    private func goToFullHive(_ helper: Helper) -> Bool {
+        let full = hives(in: helper.garden).filter { $0.isFull && !$0.packing }
+        guard let hive = full.min(by: { distance(helper, to: $0) < distance(helper, to: $1) }) else { return false }
+        helper.task = .toHive(hive.id)
+        return true
+    }
+
+    private func potter(_ helper: Helper) {
+        let roll = random.next()
+        if roll < 0.55 {
+            let a = World.helperArea
+            let x = min(Double(a.maxX), max(Double(a.minX), Double(helper.home.x) + (random.next() - 0.5) * 40))
+            let y = min(Double(a.maxY), max(Double(a.minY), Double(helper.home.y) + (random.next() - 0.5) * 14))
+            helper.task = .stroll(x: x, y: y)
+        } else if roll < 0.75 {
+            helper.task = .nap(wait: 3 + random.next() * 3)
+        } else {
+            helper.task = .idle(wait: 2 + random.next() * 2)
+        }
+    }
+
     private func helperSpot(_ hive: Hive) -> (x: Double, y: Double) {
         (Double(min(World.helperArea.maxX, hive.x + 26)), Double(min(World.helperArea.maxY, hive.y + 1)))
     }
@@ -555,9 +581,9 @@ final class World {
         return hypot(spot.x - helper.x, spot.y - helper.y)
     }
 
-    private func walk(_ helper: Helper, to target: (x: Double, y: Double), dt: Double) -> Bool {
+    private func walk(_ helper: Helper, to target: (x: Double, y: Double), dt: Double, speed: Double = World.helperSpeed) -> Bool {
         let dx = target.x - helper.x, dy = target.y - helper.y, d = hypot(dx, dy)
-        let step = World.helperSpeed * dt
+        let step = speed * dt
         if abs(dx) > 0.5 { helper.facing = dx > 0 ? 1 : -1 }
         helper.walked += dt
         guard d > step else { helper.x = target.x; helper.y = target.y; return true }

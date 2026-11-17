@@ -22,6 +22,7 @@ final class GardenRenderer {
         static let bee = RGB("#f2b632"), beeLoaded = RGB("#e9862f"), beeDark = RGB("#3b2a1a"), wing = RGB("#fff8e6")
         static let honey = RGB("#e8961e"), honeyHi = RGB("#ffc24a")
         static let glow = RGB("#f1b65e"), lanternLight = RGB("#ffd68c"), lanternCore = RGB("#fff6d2"), firefly = RGB("#fbeaa0")
+        static let heart = RGB("#e0485a"), heartShine = RGB("#ffb3bd")
         static let star = RGB("#d9dcf2"), brightStar = RGB("#fff7e0"), moon = RGB("#f4e6c6"), puff = RGB("#fff4dc")
         static let invalid = RGB("#e06050")
     }
@@ -100,7 +101,7 @@ final class GardenRenderer {
         Widgets.shedIcon(canvas, count: world.spareBoxes + world.storedHelpers.count)
         canvas.tint = .white
         drawGlows(world, hives: hives, time: time, dark: dark)
-        if let helper { drawHelperGlow(helper, time: time, dark: dark) }
+        if let helper { drawHelperGlow(helper, time: time, dark: dark); drawHeart(helper) }
         if let ghost { drawGhost(ghost) }
         Widgets.mapIcon(canvas)
     }
@@ -343,7 +344,7 @@ final class GardenRenderer {
 
     private func helperPose(_ h: Helper, time: Double) -> (pose: HelperSprite.Pose, frame: Int) {
         if h.isWalking { return (h.carrying ? .carry : .walk, Int(h.walked * 8)) }
-        if h.asleep { return (.sleep, Int(time * 1.2)) }
+        if h.asleep || h.isNapping { return (.sleep, Int(time * 1.2)) }
         let blink = (time + Double(h.id) * 1.7).truncatingRemainder(dividingBy: 3.6) < 0.15
         return (blink ? .blink : .idle, 0)
     }
@@ -362,6 +363,18 @@ final class GardenRenderer {
         let lx = Double(h.facing < 0 ? Int(h.x.rounded()) - 8 + 15 - p.x : Int(h.x.rounded()) - 8 + p.x), ly = Double(Int(h.y.rounded()) - 15 + p.y)
         let k = dark * (0.9 + 0.1 * sin(time * 6))
         for y in -9...9 { for x in -9...9 where x * x + y * y <= 81 { canvas.fill(lx + Double(x), ly + Double(y), 1, 1, P.lanternLight, alpha: 0.08 * k) } }
+    }
+
+    private func drawHeart(_ h: Helper) {
+        guard h.heart > 0 else { return }
+        let rows = [".rr.rr.", "rwrrrrr", "rrrrrrr", ".rrrrr.", "..rrr..", "...r..."]
+        let rise = (1.2 - h.heart) * 8, alpha = min(1, h.heart / 0.4)
+        let ox = Int(h.x.rounded()) - 3, oy = Int((h.y - 24 - rise).rounded())
+        for (j, row) in rows.enumerated() {
+            for (i, ch) in row.enumerated() where ch != "." {
+                canvas.fill(Double(ox + i), Double(oy + j), 1, 1, ch == "w" ? P.heartShine : P.heart, alpha: alpha)
+            }
+        }
     }
 
     private func drawHornet(_ h: Hornet, time: Double) {

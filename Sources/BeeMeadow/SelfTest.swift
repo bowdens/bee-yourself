@@ -129,7 +129,10 @@ enum SelfTest {
         let jarsAtStart = helped.jars.count
         for i in 0..<300 { helped.tick(0.1, minute: 30, time: Double(i) * 0.1, visibleGarden: 0) }
         check(helped.jars.count == jarsAtStart + 1 && clover.honey < 0.1, "bear collects a full hive")
-        check(abs(bear!.x - 70) < 1 && !bear!.carrying, "bear walks home after collecting")
+        check(abs(bear!.x - 70) <= 20 && !bear!.carrying, "bear walks home after collecting")
+        bear!.task = .nap(wait: 5)
+        bear!.pet()
+        check(bear!.heart > 0 && !bear!.isNapping, "petting a napping bear wakes it with a heart")
         helped.storeHelper(bear!.id)
         check(bear!.isStored && helped.helper(in: 0) == nil, "drag the bear back into the shed")
         check(helped.placeHelper(mouse.id, x: 70, y: 160, in: 1) && helped.placeHelper(bear!.id, x: 60, y: 150, in: 0), "swap helpers between gardens")

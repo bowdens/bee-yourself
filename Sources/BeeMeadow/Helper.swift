@@ -27,6 +27,8 @@ final class Helper {
         case toHive(Int)
         case collecting(Int, wait: Double)
         case home
+        case stroll(x: Double, y: Double)
+        case nap(wait: Double)
     }
 
     let id: Int
@@ -40,14 +42,25 @@ final class Helper {
     var carrying = false
     var asleep = false
     var walked = 0.0
+    var heart = 0.0
 
     var isStored: Bool { garden < 0 }
 
     var isWalking: Bool {
         switch task {
-        case .toHive, .home: return true
+        case .toHive, .home, .stroll: return true
         default: return false
         }
+    }
+
+    var isNapping: Bool {
+        if case .nap = task { return true }
+        return false
+    }
+
+    func pet() {
+        heart = 1.2
+        if isNapping { task = .idle(wait: 1.5) }
     }
 
     init(id: Int, kind: HelperKind, garden: Int, x: Int, y: Int) {
