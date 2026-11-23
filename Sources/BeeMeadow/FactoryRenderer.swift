@@ -14,7 +14,7 @@ enum FactoryArt {
         static let brick = RGB("#b85c3c"), brickLight = RGB("#d0744e"), mortar = RGB("#9c4a32"), roof = RGB("#5a3a2e")
         static let chimney = RGB("#a04e36"), cap = RGB("#3b2416"), frame = RGB("#3b2416"), glow = RGB("#ffc24a"), glowHi = RGB("#ffe08a")
         static let door = RGB("#3b2416"), doorInside = RGB("#5a3a22"), pipe = RGB("#c8a070"), pipeDark = RGB("#8a6a44")
-        static let sign = RGB("#e8d0a0"), smoke = RGB("#ece6de"), honey = RGB("#e8961e")
+        static let sign = RGB("#e8d0a0"), smoke = RGB("#ece6de"), honey = RGB("#e8961e"), lamplight = RGB("#ffd68c")
     }
 
     static func draw(_ c: PixelCanvas, x: Int, y: Int, scale s: Int, time: Double) {
@@ -45,6 +45,34 @@ enum FactoryArt {
         c.fill(Double(x + 39 * s), Double(y + 24 * s) + drip * Double(2 * s), s, s, C.honey, alpha: 1 - drip)
         smoke(c, x: x + 7 * s, y: y, scale: s, time: time, seed: 0)
         smoke(c, x: x + 13 * s, y: y + 3 * s, scale: s, time: time, seed: 1)
+    }
+
+    static func lights(_ c: PixelCanvas, x: Int, y: Int, scale s: Int, time: Double, strength: Double) {
+        guard strength > 0 else { return }
+        let tint = c.tint, k = Double(s), cx = Double(x), cy = Double(y)
+        c.tint = .white
+        func r(_ ux: Int, _ uy: Int, _ uw: Int, _ uh: Int, _ colour: RGB, alpha: Double = 1) {
+            c.fill(Double(x + ux * s), Double(y + uy * s), uw * s, uh * s, colour, alpha: alpha)
+        }
+        let base = cy + 26 * k
+        for dy in 0..<Int(14 * k) {
+            let fade = 1 - Double(dy) / (14 * k), w = Int(36 * k * (0.5 + 0.5 * fade))
+            c.fill(cx + 20 * k - Double(w / 2), base + Double(dy), w, 1, C.lamplight, alpha: 0.28 * strength * fade)
+        }
+        for i in 0..<4 {
+            let wx = cx + (7.5 + Double(i * 8)) * k, wy = cy + 15.5 * k
+            for ring in 0..<5 { c.disc(wx, wy, radius: (2.5 + Double(ring)) * k, C.lamplight, alpha: 0.045 * strength) }
+        }
+        for tooth in 0..<4 {
+            for ring in 0..<3 { c.disc(cx + Double(22 + tooth * 5) * k, cy + 7 * k, radius: (1 + Double(ring)) * k, C.lamplight, alpha: 0.04 * strength) }
+        }
+        for i in 0..<4 {
+            let flicker = 0.5 + 0.5 * sin(time * 3 + Double(i) * 1.9)
+            r(6 + i * 8, 14, 3, 3, C.glow.mixed(with: C.glowHi, flicker), alpha: strength)
+        }
+        for tooth in 0..<4 { r(22 + tooth * 5, 5, 1, 5, C.glowHi, alpha: strength) }
+        r(18, 20, 4, 6, C.lamplight.mixed(with: C.glow, 0.4), alpha: strength * 0.85)
+        c.tint = tint
     }
 
     private static func smoke(_ c: PixelCanvas, x: Int, y: Int, scale s: Int, time: Double, seed: Int) {
@@ -161,9 +189,10 @@ final class FactoryRenderer {
         for s in specks { c.pixel(s.x, s.y, s.dark ? C.yardDark : C.yardLight) }
         c.fill(0, Double(ground), 78, Layout.height - ground, C.grass)
         for s in specks where s.x < 78 { c.pixel(s.x, s.y, C.grassDark) }
+        let dark = light.darkness
+        if rise >= 1 { FactoryArt.lights(c, x: origin.x, y: origin.y, scale: 3, time: time, strength: dark) }
         drawConveyor(world, minute: minute, time: time, visible: rise >= 1)
         drawCamp(time: time)
-        let dark = light.darkness
         let helpers = world.homelessHelpers.sorted { $0.y < $1.y }
         for helper in helpers { HelperSprite.drawInScene(helper, on: c, time: time, dark: dark) }
         for helper in helpers { HelperSprite.drawGlow(helper, on: c, time: time, dark: dark); HelperSprite.drawHeart(helper, on: c) }

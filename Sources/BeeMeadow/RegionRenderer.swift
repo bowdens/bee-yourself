@@ -48,7 +48,7 @@ final class RegionRenderer {
         for y in -r...r {
             for x in -r...r {
                 let v = Valley(x: x, y: y), rect = RegionRenderer.tileRect(v, world: world)
-                if v == .home { drawFactory(rect, time: time) }
+                if v == .home { drawFactory(rect, time: time, dark: Clock.light(at: minute).darkness) }
                 else if world.isOpen(v) { drawValley(v, world: world, rect: rect) }
                 else { drawLocked(rect) }
                 if v == current { outline(rect, C.current) }
@@ -65,11 +65,13 @@ final class RegionRenderer {
         canvas.fill(x, y, 1, r.h + 2, colour); canvas.fill(x + Double(r.w + 1), y, 1, r.h + 2, colour)
     }
 
-    private func drawFactory(_ r: PixelRect, time: Double) {
+    private func drawFactory(_ r: PixelRect, time: Double, dark: Double) {
         canvas.fill(Double(r.x), Double(r.y), r.w, r.h, C.yard)
         let art = FactoryArt.size
         if r.w >= art.w + 2 && r.h >= art.h + 2 {
-            FactoryArt.draw(canvas, x: r.x + (r.w - art.w) / 2, y: r.y + r.h - art.h - 1, scale: 1, time: time)
+            let x = r.x + (r.w - art.w) / 2, y = r.y + r.h - art.h - 1
+            FactoryArt.draw(canvas, x: x, y: y, scale: 1, time: time)
+            FactoryArt.lights(canvas, x: x, y: y, scale: 1, time: time, strength: dark)
         } else {
             FactoryArt.tiny(canvas, x: r.x + (r.w - 10) / 2, y: r.y + (r.h - 10) / 2)
         }
