@@ -143,7 +143,7 @@ enum Persistence {
             let garden = saved.garden == Helper.homeless || gardens.contains { $0.id == saved.garden } ? saved.garden : Helper.shed
             return Helper(id: i, kind: saved.kind, garden: garden, x: saved.x, y: saved.y)
         }
-        let factoryJars = (0..<(save.factoryJars ?? 0)).map { _ in Jar.fromFactory(at: save.savedAt) }
+        let factoryJars = (0..<max(0, save.factoryJars ?? 0)).map { _ in Jar.fromFactory(at: save.savedAt) }
         return World(
             gardens: gardens, hives: hives, bees: bees, jars: save.jars + factoryJars, harvests: save.harvests, spareBoxes: save.spareBoxes,
             nextBeeID: save.nextBeeID, nextHiveID: save.nextHiveID, nextGardenID: save.nextGardenID, helpers: helpers,
