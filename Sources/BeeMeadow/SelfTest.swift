@@ -171,6 +171,9 @@ enum SelfTest {
             _ = factory.buyGarden(kind: .heather, plot: 4, in: valley)
         }
         check(factory.gardens.count == 8 && factory.jars.count == 5000 - 800, "each first ring valley starts at 100 jars")
+        let swarm = factory.hives.first
+        check(factory.hives.count == 1 && swarm?.garden == factory.gardens[0].id && factory.hasColony, "a wild swarm moves into the first new garden")
+        check(swarm.map { factory.readyToSplit($0) } == true, "the swarm can split into new boxes")
         check(factory.openRing == 2 && factory.isOpen(outer) && factory.gardenPrice(in: outer) == 1000, "filling the ring opens the next at 100x")
         check(factory.canHireHelper && factory.hireHelper(.bear, in: outer) != nil && factory.jars.count == 4200 - 2000, "hire at 100x, homeless helpers don't count")
         let beforeFactory = factory.jars.count
@@ -184,6 +187,9 @@ enum SelfTest {
         check(factory.jars.count > beforeAway + 10, "factory keeps making honey while away (\(factory.jars.count - beforeAway))")
         let saved = (try? Persistence.encode(factory, currentGarden: -1, now: Date())).map { Persistence.decode($0, now: Date()) }
         check(saved?.world.hasFactory == true && saved?.world.openRing == 2 && saved?.world.homelessHelpers.count == 2, "factory, valleys and camp survive save and load")
+        let factoryJars = factory.jars.filter(\.isFromFactory).count
+        let encoded = (try? Persistence.encode(factory, currentGarden: -1, now: Date())).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        check(factoryJars > 100 && !encoded.contains("\"Blended\"") && saved?.world.jars.count == factory.jars.count, "factory jars save as a count (\(factoryJars) jars)")
         check(saved?.world.garden(in: east, plot: 4) != nil && saved?.currentGarden == saved?.world.gardens.first?.id, "gardens remember their valley")
 
         let meadow = World.classic()

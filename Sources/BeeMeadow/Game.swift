@@ -183,9 +183,11 @@ final class Game {
         case .picker(let valley, let plot):
             if Widgets.contains(Widgets.backRect, p) { go(to: .valley(valley)); return true }
             for (i, kind) in GardenKind.allCases.enumerated() where Widgets.contains(StallRenderer.pickerRect(i), p) {
+                let hadColony = world.hasColony
                 if let garden = world.buyGarden(kind: kind, plot: plot, in: valley) {
                     currentGarden = garden.id
                     go(to: .garden)
+                    if !hadColony { show(["A wild swarm", "has moved in"]) }
                     onChange?()
                 } else { stall.show("need \(world.gardenPrice(in: valley)) jars") }
                 return true

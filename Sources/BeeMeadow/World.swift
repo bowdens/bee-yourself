@@ -111,6 +111,7 @@ final class World {
     static let hornetMeanSeconds = 7200.0
     static let factoryPrice = 1000
     static let factoryHoneyName = "Blended"
+    static let factoryName = "Factory"
     static let ringPriceMultiplier = 10
     static let fullValleyHives = Layout.plots * hivesPerGarden
     static let fullStrengthForagers = Int((Double(colonyStrength) * foragerShare).rounded(.up))
@@ -345,7 +346,22 @@ final class World {
         let garden = Garden(id: nextGardenID, kind: kind, valley: valley, plot: plot, nextHornetIn: World.hornetMeanSeconds)
         nextGardenID += 1
         gardens.append(garden)
+        if !hasColony { addSwarm(to: garden) }
         return garden
+    }
+
+    var hasColony: Bool { bees.contains { $0.role == .queen } || hives.contains { $0.queenEmergesIn != nil } }
+
+    private func addSwarm(to garden: Garden) {
+        let spot = Layout.startingHiveSpots[1], used = Set(hives.map(\.name))
+        let hive = Hive(id: nextHiveID, name: World.names.first { !used.contains($0) } ?? "Hive \(nextHiveID + 1)", garden: garden.id, x: spot.x, y: spot.y, honey: 0)
+        nextHiveID += 1
+        hives.append(hive)
+        reindex()
+        for position in 0..<World.colonyStrength / 2 {
+            bees.append(Bee(id: nextBeeID, hive: hive.id, role: World.defaultRole(position: position), state: .inside(wait: random.next() * 6), wobble: random.next() * 6.28))
+            nextBeeID += 1
+        }
     }
 
     func canPlace(x: Int, y: Int, in garden: Int, ignoring: Int? = nil) -> Bool {
@@ -620,7 +636,7 @@ final class World {
         factoryHoney += activity * World.factoryJarsPerMinute * seconds / 60
         while factoryHoney >= 1 {
             factoryHoney -= 1
-            jars.append(Jar(honey: World.factoryHoneyName, hiveName: "Factory", collectedAt: date))
+            jars.append(Jar.fromFactory(at: date))
         }
     }
 

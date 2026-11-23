@@ -179,6 +179,10 @@ struct Jar: Codable {
         self.collectedAt = collectedAt
     }
 
+    static func fromFactory(at date: Date) -> Jar { Jar(honey: World.factoryHoneyName, hiveName: World.factoryName, collectedAt: date) }
+
+    var isFromFactory: Bool { honey == World.factoryHoneyName && hiveName == World.factoryName }
+
     private enum CodingKeys: String, CodingKey { case honey, hiveName, collectedAt, hive }
 
     init(from decoder: Decoder) throws {

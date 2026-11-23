@@ -55,6 +55,7 @@ private struct SaveV2: Codable {
     let helpers: [SavedHelper]?
     let hasFactory: Bool?
     let factoryHoney: Double?
+    let factoryJars: Int?
 }
 
 private struct SaveV1: Codable {
@@ -98,10 +99,10 @@ enum Persistence {
                     bees: world.bees.filter { $0.hive == hive.id }.map { SaveV2.SavedBee(id: $0.id, role: $0.role) }
                 )
             },
-            jars: world.jars, harvests: world.harvests, spareBoxes: world.spareBoxes,
+            jars: world.jars.filter { !$0.isFromFactory }, harvests: world.harvests, spareBoxes: world.spareBoxes,
             nextBeeID: world.nextBeeID, nextHiveID: world.nextHiveID, nextGardenID: world.nextGardenID, currentGarden: currentGarden, clockOffset: Clock.offset,
             helpers: world.helpers.map { SaveV2.SavedHelper(kind: $0.kind, garden: $0.garden, x: $0.home.x, y: $0.home.y) },
-            hasFactory: world.hasFactory, factoryHoney: world.factoryHoney
+            hasFactory: world.hasFactory, factoryHoney: world.factoryHoney, factoryJars: world.jars.filter(\.isFromFactory).count
         )
         return try JSONEncoder.iso.encode(save)
     }
@@ -142,8 +143,9 @@ enum Persistence {
             let garden = saved.garden == Helper.homeless || gardens.contains { $0.id == saved.garden } ? saved.garden : Helper.shed
             return Helper(id: i, kind: saved.kind, garden: garden, x: saved.x, y: saved.y)
         }
+        let factoryJars = (0..<(save.factoryJars ?? 0)).map { _ in Jar.fromFactory(at: save.savedAt) }
         return World(
-            gardens: gardens, hives: hives, bees: bees, jars: save.jars, harvests: save.harvests, spareBoxes: save.spareBoxes,
+            gardens: gardens, hives: hives, bees: bees, jars: save.jars + factoryJars, harvests: save.harvests, spareBoxes: save.spareBoxes,
             nextBeeID: save.nextBeeID, nextHiveID: save.nextHiveID, nextGardenID: save.nextGardenID, helpers: helpers,
             hasFactory: save.hasFactory ?? false, factoryHoney: save.factoryHoney ?? 0
         )
