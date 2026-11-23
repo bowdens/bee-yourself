@@ -99,9 +99,8 @@ final class FactoryRenderer {
 
     func render(_ world: World, minute: Double, time: Double, hover: (x: Double, y: Double)?) {
         drawScene(world, minute: minute, time: time, rise: 1)
-        let rate = World.factoryJarsPerMinute * Clock.activity(minute)
-        let tenths = Int((rate * 10).rounded())
-        let line = tenths == 0 ? "the machines rest at night" : "making \(tenths / 10).\(tenths % 10) jars a minute"
+        let tenths = Int((World.factoryJarsPerMinute * 10).rounded())
+        let line = "making \(tenths / 10).\(tenths % 10) jars a minute"
         PixelFont.draw(line, on: canvas, x: (Layout.width - PixelFont.width(line)) / 2, y: 168, colour: C.text, shadow: C.shadow)
         Widgets.header(canvas, title: "Factory", detail: world.jars.count == 1 ? "1 jar" : "\(world.jars.count) jars")
     }
@@ -176,7 +175,7 @@ final class FactoryRenderer {
         c.fill(Double(start), y, Layout.width - start, 3, C.belt)
         for x in stride(from: start + 2, to: Layout.width, by: 6) { c.fill(Double(x), y + 3, 2, 2, C.roller) }
         guard visible else { return }
-        let speed = 10 * Clock.activity(minute)
+        let speed = 10.0
         for k in 0..<6 {
             let jx = Double(start) + 8 + (time * speed + Double(k) * 15).truncatingRemainder(dividingBy: 90)
             Widgets.jar(c, honey: World.factoryHoneyName, x: jx, y: y - 5, small: true)

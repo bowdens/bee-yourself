@@ -180,6 +180,9 @@ enum SelfTest {
         for i in 0..<600 { factory.tick(0.1, minute: 30, time: Double(i) * 0.1, visibleGarden: nil) }
         let made = factory.jars.count - beforeFactory
         check(made >= 2 && made <= 4, "factory makes about 3.5 jars a minute by day (\(made))")
+        let beforeNight = factory.jars.count
+        for i in 0..<600 { factory.tick(0.1, minute: 66, time: Double(i) * 0.1, visibleGarden: nil) }
+        check(Clock.activity(66) == 0 && (2...4).contains(factory.jars.count - beforeNight), "factory keeps going through the night (\(factory.jars.count - beforeNight))")
         check(factory.jars.last?.honey == World.factoryHoneyName && factory.jars.last?.hiveName == "Factory", "factory jars are blended honey")
         check(!factory.harvests.contains { $0.hiveName == "Factory" }, "factory jars stay out of the harvest book")
         let beforeAway = factory.jars.count

@@ -480,7 +480,7 @@ final class World {
         for hive in hives where !hive.isPacked { grow(hive, dt: dt, census: census[hive.id] ?? (0, false)) }
         finishPacking()
         for helper in helpers where !helper.isStored { step(helper, dt: dt, activity: activity) }
-        runFactory(seconds: dt, activity: activity, at: Date())
+        runFactory(seconds: dt, at: Date())
         if let visibleGarden, let garden = garden(visibleGarden) { updateHornet(garden, dt: dt, activity: activity, time: time) }
     }
 
@@ -631,9 +631,9 @@ final class World {
         }
     }
 
-    private func runFactory(seconds: Double, activity: Double, at date: Date) {
+    private func runFactory(seconds: Double, at date: Date) {
         guard hasFactory else { return }
-        factoryHoney += activity * World.factoryJarsPerMinute * seconds / 60
+        factoryHoney += World.factoryJarsPerMinute * seconds / 60
         while factoryHoney >= 1 {
             factoryHoney -= 1
             jars.append(Jar.fromFactory(at: date))
@@ -826,7 +826,7 @@ final class World {
             for hive in hives where hive.isFull && !hive.isPacked {
                 if let helper = helper(in: hive.garden), helper.kind.isAwake(activity: activity) { collect(hive: hive.id, at: t) }
             }
-            runFactory(seconds: step, activity: activity, at: t)
+            runFactory(seconds: step, at: t)
             t = t.addingTimeInterval(step)
         }
         for hive in hives where !hive.isPacked {
